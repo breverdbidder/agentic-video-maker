@@ -123,14 +123,14 @@ case "$CRITIQUE" in on|off) ;; *) echo "ERROR: --critique must be on|off, got '$
 case "$CRITIQUE_LOOP" in on|off) ;; *) echo "ERROR: --critique-loop must be on|off, got '$CRITIQUE_LOOP'" >&2; exit 1 ;; esac
 if [ -n "$USER_IMG_MODEL" ]; then
   case "$USER_IMG_MODEL" in
-    flux-schnell|flux-pro-1.1|nano-banana-2|nano-banana-pro|gpt-image-1|imagen-3.0) ;;
-    *) echo "ERROR: --img-model must be one of: flux-schnell|flux-pro-1.1|nano-banana-2|nano-banana-pro|gpt-image-1|imagen-3.0 — got '$USER_IMG_MODEL'" >&2; exit 1 ;;
+    flux-schnell|flux-pro-1.1|nano-banana-2|nano-banana-pro|gpt-image-1|gpt-image-2|imagen-3.0) ;;
+    *) echo "ERROR: --img-model must be one of: flux-schnell|flux-pro-1.1|nano-banana-2|nano-banana-pro|gpt-image-1|gpt-image-2|imagen-3.0 — got '$USER_IMG_MODEL'" >&2; exit 1 ;;
   esac
 fi
 if [ -n "$USER_VID_MODEL" ]; then
   case "$USER_VID_MODEL" in
-    ltx-2|grok-imagine) ;;
-    *) echo "ERROR: --vid-model must be one of: ltx-2|grok-imagine — got '$USER_VID_MODEL'" >&2; exit 1 ;;
+    ltx-2|grok-imagine|kling-v2.1|seedance-pro|luma-ray-2|runway-gen-4|pika-2.5|minimax-hailuo-02|veo-3|sora-2|wan-2.2) ;;
+    *) echo "ERROR: --vid-model must be one of: ltx-2|grok-imagine|kling-v2.1|seedance-pro|luma-ray-2|runway-gen-4|pika-2.5|minimax-hailuo-02|veo-3|sora-2|wan-2.2 — got '$USER_VID_MODEL'" >&2; exit 1 ;;
   esac
 fi
 
@@ -361,14 +361,26 @@ pe_by_i = {s["i"]: s for s in pe["scenes"]}
 
 # Cost lookup
 COST = {
-  "grok-imagine":     lambda dur: 1.10 * (dur/5.0),
-  "ltx-2":            lambda dur: 0.07 * (dur/5.0),
-  "nano-banana-2":    lambda _: 0.039,
-  "nano-banana-pro":  lambda _: 0.080,  # Imagen 4 Ultra ~$0.08
-  "gpt-image-1":      lambda _: 0.040,  # OpenAI standard size; HD higher
-  "imagen-3.0":       lambda _: 0.040,
-  "flux-pro-1.1":     lambda _: 0.040,
-  "flux-schnell":     lambda _: 0.003,
+  # Video (per 5s)
+  "grok-imagine":      lambda dur: 1.10 * (dur/5.0),
+  "ltx-2":             lambda dur: 0.07 * (dur/5.0),
+  "kling-v2.1":        lambda dur: 0.50 * (dur/5.0),
+  "seedance-pro":      lambda dur: 0.60 * (dur/5.0),
+  "luma-ray-2":        lambda dur: 0.40 * (dur/5.0),
+  "runway-gen-4":      lambda dur: 0.50 * (dur/5.0),
+  "pika-2.5":          lambda dur: 0.45 * (dur/5.0),
+  "minimax-hailuo-02": lambda dur: 0.30 * (dur/5.0),
+  "veo-3":             lambda dur: 0.75 * (dur/5.0),
+  "sora-2":            lambda dur: 0.80 * (dur/5.0),
+  "wan-2.2":           lambda dur: 0.35 * (dur/5.0),
+  # Images (per image)
+  "nano-banana-2":     lambda _: 0.039,
+  "nano-banana-pro":   lambda _: 0.080,
+  "gpt-image-1":       lambda _: 0.040,
+  "gpt-image-2":       lambda _: 0.060,
+  "imagen-3.0":        lambda _: 0.040,
+  "flux-pro-1.1":      lambda _: 0.040,
+  "flux-schnell":      lambda _: 0.003,
 }
 
 scenes_out = []
@@ -1545,10 +1557,19 @@ generate_scene_asset() {
     grok-imagine) call_grok_imagine_video "$PROMPT" "$DUR" "$ASPECT" "$OUT" ;;
     nano-banana-2) call_nano_banana "$PROMPT" "$ASPECT" "$OUT" ;;
     nano-banana-pro) call_nano_banana_pro "$PROMPT" "$ASPECT" "$OUT" ;;
-    gpt-image-1)  call_gpt_image "$PROMPT" "$ASPECT" "$OUT" ;;
+    gpt-image-1|gpt-image-2) call_gpt_image "$MODEL" "$PROMPT" "$ASPECT" "$OUT" ;;
     imagen-3.0)   call_imagen3 "$PROMPT" "$ASPECT" "$OUT" ;;
     flux-schnell|flux-pro-1.1) call_flux "$MODEL" "$PROMPT" "$ASPECT" "$OUT" ;;
-    ltx-2)        call_ltx2 "$PROMPT" "$DUR" "$ASPECT" "$OUT" ;;
+    ltx-2)              call_ltx2          "$PROMPT" "$DUR" "$ASPECT" "$OUT" ;;
+    kling-v2.1)         call_kling_v21     "$PROMPT" "$DUR" "$ASPECT" "$OUT" ;;
+    seedance-pro)       call_seedance_pro  "$PROMPT" "$DUR" "$ASPECT" "$OUT" ;;
+    luma-ray-2)         call_luma_ray2     "$PROMPT" "$DUR" "$ASPECT" "$OUT" ;;
+    runway-gen-4)       call_runway_gen4   "$PROMPT" "$DUR" "$ASPECT" "$OUT" ;;
+    pika-2.5)           call_pika_25       "$PROMPT" "$DUR" "$ASPECT" "$OUT" ;;
+    minimax-hailuo-02)  call_hailuo_02     "$PROMPT" "$DUR" "$ASPECT" "$OUT" ;;
+    veo-3)              call_veo3          "$PROMPT" "$DUR" "$ASPECT" "$OUT" ;;
+    sora-2)             call_sora2         "$PROMPT" "$DUR" "$ASPECT" "$OUT" ;;
+    wan-2.2)            call_wan_22        "$PROMPT" "$DUR" "$ASPECT" "$OUT" ;;
     *) echo "ERROR: unknown model $MODEL" >&2; exit 1 ;;
   esac
 
@@ -1630,12 +1651,13 @@ call_nano_banana_pro() {
   call_nano_banana "$PROMPT" "$ASPECT" "$OUT"
 }
 
-# gpt-image-1 — OpenAI's GPT Image model (formerly DALL-E 3's successor).
+# gpt-image-* — OpenAI's GPT Image models (DALL-E 3 successors).
+# Supports gpt-image-1 (2025) and gpt-image-2 (2026).
 # Requires OPENAI_API_KEY env var.
 call_gpt_image() {
-  local PROMPT="$1" ASPECT="$2" OUT="$3"
+  local MODEL="$1" PROMPT="$2" ASPECT="$3" OUT="$4"
   if [ -z "$OPENAI_API_KEY" ]; then
-    echo "  ERROR: gpt-image-1 requires OPENAI_API_KEY env var" >&2
+    echo "  ERROR: $MODEL requires OPENAI_API_KEY env var" >&2
     return 1
   fi
   local SIZE="1024x1024"
@@ -1645,8 +1667,8 @@ call_gpt_image() {
     "1:1")  SIZE="1024x1024" ;;
   esac
   local TMP; TMP=$(mktemp)
-  jq -n --arg p "$PROMPT" --arg s "$SIZE" \
-    '{model:"gpt-image-1", prompt:$p, size:$s, n:1, output_format:"png"}' > "$TMP"
+  jq -n --arg m "$MODEL" --arg p "$PROMPT" --arg s "$SIZE" \
+    '{model:$m, prompt:$p, size:$s, n:1, output_format:"png"}' > "$TMP"
   local RESP; RESP=$(curl -sS -X POST "https://api.openai.com/v1/images/generations" \
     -H "Authorization: Bearer ${OPENAI_API_KEY}" -H "Content-Type: application/json" \
     --data-binary "@$TMP")
@@ -1662,7 +1684,7 @@ call_gpt_image() {
     curl -sSL "$URL" -o "$OUT"
     [ -s "$OUT" ] && return 0
   fi
-  echo "  gpt-image-1 failed: $RESP" | head -c 400 >&2
+  echo "  $MODEL failed: $RESP" | head -c 400 >&2
   return 1
 }
 
@@ -1714,26 +1736,153 @@ call_ltx2() {
   local TMP; TMP=$(mktemp)
   jq -n --arg p "$PROMPT" --argjson w $W --argjson h $H --argjson f $FRAMES \
     '{prompt:$p, num_frames:$f, width:$w, height:$h}' > "$TMP"
-  local SUB; SUB=$(curl -sS -X POST "https://queue.fal.run/fal-ai/ltx-2/text-to-video" \
+  _fal_video_submit_poll "fal-ai/ltx-2/text-to-video" "$TMP" "$OUT" 360 "LTX"
+}
+
+# Shared helper for fal.ai queue-based video gen.
+# Usage: _fal_video_submit_poll <fal-path> <body-json-file> <out-mp4> <timeout-sec> <label>
+_fal_video_submit_poll() {
+  local FAL_PATH="$1" BODY="$2" OUT="$3" TIMEOUT="${4:-600}" LABEL="${5:-fal}"
+  local SUB; SUB=$(curl -sS -X POST "https://queue.fal.run/${FAL_PATH}" \
     -H "Authorization: Key ${FAL_KEY}" -H "Content-Type: application/json" \
-    --data-binary "@$TMP")
-  rm -f "$TMP"
+    --data-binary "@$BODY")
+  rm -f "$BODY"
   local STATUS_URL; STATUS_URL=$(echo "$SUB" | jq -r '.status_url // empty')
   local RESP_URL;   RESP_URL=$(echo "$SUB" | jq -r '.response_url // empty')
-  if [ -z "$STATUS_URL" ]; then echo "  LTX submit failed: $SUB" >&2; return 1; fi
-  local DEADLINE=$(( $(date +%s) + 360 ))
+  if [ -z "$STATUS_URL" ]; then echo "  ${LABEL} submit failed: $SUB" >&2; return 1; fi
+  local DEADLINE=$(( $(date +%s) + TIMEOUT ))
   while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-    sleep 4
+    sleep 5
     local POLL; POLL=$(curl -sS "$STATUS_URL" -H "Authorization: Key ${FAL_KEY}")
     local ST; ST=$(echo "$POLL" | jq -r '.status // empty')
     if [ "$ST" = "COMPLETED" ]; then
       local R; R=$(curl -sS "$RESP_URL" -H "Authorization: Key ${FAL_KEY}")
-      local URL; URL=$(echo "$R" | jq -r '.video.url // empty')
-      if [ -n "$URL" ]; then curl -sSL "$URL" -o "$OUT"; return 0; fi
+      local URL; URL=$(echo "$R" | jq -r '.video.url // .videos[0].url // .output.url // empty')
+      if [ -n "$URL" ] && [ "$URL" != "null" ]; then curl -sSL "$URL" -o "$OUT"; return 0; fi
     fi
-    [ "$ST" = "FAILED" ] || [ "$ST" = "ERROR" ] && { echo "  LTX failed: $POLL" >&2; return 1; }
+    [ "$ST" = "FAILED" ] || [ "$ST" = "ERROR" ] && { echo "  ${LABEL} failed: $POLL" >&2; return 1; }
   done
-  echo "  LTX timeout" >&2; return 1
+  echo "  ${LABEL} timeout" >&2; return 1
+}
+
+# Kling v2.1 (fal.ai) — premium cinematic
+call_kling_v21() {
+  local PROMPT="$1" DUR="$2" ASPECT="$3" OUT="$4"
+  [ -z "$FAL_KEY" ] && { echo "ERROR: FAL_KEY not set" >&2; return 1; }
+  local TMP; TMP=$(mktemp)
+  jq -n --arg p "$PROMPT" --arg d "$DUR" --arg a "$ASPECT" \
+    '{prompt:$p, duration:$d, aspect_ratio:$a, negative_prompt:"blur, distort, low quality"}' > "$TMP"
+  _fal_video_submit_poll "fal-ai/kling-video/v2.1/standard/text-to-video" "$TMP" "$OUT" 600 "Kling-v2.1"
+}
+
+# Seedance 1.0 Pro (fal.ai / ByteDance) — fast premium
+call_seedance_pro() {
+  local PROMPT="$1" DUR="$2" ASPECT="$3" OUT="$4"
+  [ -z "$FAL_KEY" ] && { echo "ERROR: FAL_KEY not set" >&2; return 1; }
+  local TMP; TMP=$(mktemp)
+  jq -n --arg p "$PROMPT" --arg d "$DUR" --arg a "$ASPECT" \
+    '{prompt:$p, duration:$d, aspect_ratio:$a, resolution:"1080p"}' > "$TMP"
+  _fal_video_submit_poll "fal-ai/bytedance/seedance/v1/pro/text-to-video" "$TMP" "$OUT" 480 "Seedance-Pro"
+}
+
+# Luma Ray 2 (fal.ai) — atmospheric
+call_luma_ray2() {
+  local PROMPT="$1" DUR="$2" ASPECT="$3" OUT="$4"
+  [ -z "$FAL_KEY" ] && { echo "ERROR: FAL_KEY not set" >&2; return 1; }
+  local DSEC; DSEC=$(awk "BEGIN{printf \"%ds\", $DUR}")
+  local TMP; TMP=$(mktemp)
+  jq -n --arg p "$PROMPT" --arg d "$DSEC" --arg a "$ASPECT" \
+    '{prompt:$p, aspect_ratio:$a, duration:$d, resolution:"720p"}' > "$TMP"
+  _fal_video_submit_poll "fal-ai/luma-dream-machine/ray-2" "$TMP" "$OUT" 480 "Luma-Ray-2"
+}
+
+# Runway Gen-4 Turbo (fal.ai) — industry standard
+call_runway_gen4() {
+  local PROMPT="$1" DUR="$2" ASPECT="$3" OUT="$4"
+  [ -z "$FAL_KEY" ] && { echo "ERROR: FAL_KEY not set" >&2; return 1; }
+  local TMP; TMP=$(mktemp)
+  jq -n --arg p "$PROMPT" --argjson d "$DUR" --arg a "$ASPECT" \
+    '{prompt:$p, duration:$d, aspect_ratio:$a}' > "$TMP"
+  _fal_video_submit_poll "fal-ai/runway-gen4/turbo/text-to-video" "$TMP" "$OUT" 480 "Runway-Gen4"
+}
+
+# Pika 2.5 (fal.ai) — versatile
+call_pika_25() {
+  local PROMPT="$1" DUR="$2" ASPECT="$3" OUT="$4"
+  [ -z "$FAL_KEY" ] && { echo "ERROR: FAL_KEY not set" >&2; return 1; }
+  local TMP; TMP=$(mktemp)
+  jq -n --arg p "$PROMPT" --argjson d "$DUR" --arg a "$ASPECT" \
+    '{prompt:$p, duration:$d, aspect_ratio:$a}' > "$TMP"
+  _fal_video_submit_poll "fal-ai/pika/v2.5/text-to-video" "$TMP" "$OUT" 480 "Pika-2.5"
+}
+
+# MiniMax Hailuo 02 (fal.ai) — realistic motion
+call_hailuo_02() {
+  local PROMPT="$1" DUR="$2" ASPECT="$3" OUT="$4"
+  [ -z "$FAL_KEY" ] && { echo "ERROR: FAL_KEY not set" >&2; return 1; }
+  local TMP; TMP=$(mktemp)
+  jq -n --arg p "$PROMPT" --arg d "$DUR" \
+    '{prompt:$p, duration:$d, prompt_optimizer:true}' > "$TMP"
+  _fal_video_submit_poll "fal-ai/minimax/hailuo-02/standard/text-to-video" "$TMP" "$OUT" 480 "Hailuo-02"
+}
+
+# Veo 3 (fal.ai or Gemini) — Google's premium
+call_veo3() {
+  local PROMPT="$1" DUR="$2" ASPECT="$3" OUT="$4"
+  [ -z "$FAL_KEY" ] && { echo "ERROR: FAL_KEY not set" >&2; return 1; }
+  local DSEC; DSEC=$(awk "BEGIN{printf \"%ds\", $DUR}")
+  local TMP; TMP=$(mktemp)
+  jq -n --arg p "$PROMPT" --arg d "$DSEC" --arg a "$ASPECT" \
+    '{prompt:$p, aspect_ratio:$a, duration:$d, resolution:"720p"}' > "$TMP"
+  _fal_video_submit_poll "fal-ai/veo3" "$TMP" "$OUT" 600 "Veo-3"
+}
+
+# Sora 2 (OpenAI) — requires OPENAI_API_KEY
+call_sora2() {
+  local PROMPT="$1" DUR="$2" ASPECT="$3" OUT="$4"
+  if [ -z "$OPENAI_API_KEY" ]; then
+    echo "  ERROR: sora-2 requires OPENAI_API_KEY env var" >&2; return 1
+  fi
+  local SIZE="1280x720"
+  case "$ASPECT" in
+    "9:16") SIZE="720x1280" ;;
+    "1:1")  SIZE="1024x1024" ;;
+  esac
+  local TMP; TMP=$(mktemp)
+  jq -n --arg p "$PROMPT" --argjson d "$DUR" --arg s "$SIZE" \
+    '{model:"sora-2", prompt:$p, seconds:$d, size:$s}' > "$TMP"
+  # Submit
+  local SUB; SUB=$(curl -sS -X POST "https://api.openai.com/v1/videos" \
+    -H "Authorization: Bearer ${OPENAI_API_KEY}" -H "Content-Type: application/json" \
+    --data-binary "@$TMP")
+  rm -f "$TMP"
+  local JOB_ID; JOB_ID=$(echo "$SUB" | jq -r '.id // empty')
+  if [ -z "$JOB_ID" ]; then echo "  Sora-2 submit failed: $SUB" >&2; return 1; fi
+  local DEADLINE=$(( $(date +%s) + 900 ))
+  while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    sleep 8
+    local POLL; POLL=$(curl -sS "https://api.openai.com/v1/videos/${JOB_ID}" \
+      -H "Authorization: Bearer ${OPENAI_API_KEY}")
+    local ST; ST=$(echo "$POLL" | jq -r '.status // empty')
+    if [ "$ST" = "completed" ]; then
+      curl -sSL "https://api.openai.com/v1/videos/${JOB_ID}/content" \
+        -H "Authorization: Bearer ${OPENAI_API_KEY}" -o "$OUT"
+      [ -s "$OUT" ] && return 0
+      echo "  Sora-2 content download empty" >&2; return 1
+    fi
+    [ "$ST" = "failed" ] && { echo "  Sora-2 failed: $POLL" >&2; return 1; }
+  done
+  echo "  Sora-2 timeout" >&2; return 1
+}
+
+# Wan 2.2 (fal.ai)
+call_wan_22() {
+  local PROMPT="$1" DUR="$2" ASPECT="$3" OUT="$4"
+  [ -z "$FAL_KEY" ] && { echo "ERROR: FAL_KEY not set" >&2; return 1; }
+  local TMP; TMP=$(mktemp)
+  jq -n --arg p "$PROMPT" --argjson d "$DUR" --arg a "$ASPECT" \
+    '{prompt:$p, duration:$d, aspect_ratio:$a, resolution:"720p"}' > "$TMP"
+  _fal_video_submit_poll "fal-ai/wan/v2.2/14b/text-to-video" "$TMP" "$OUT" 600 "Wan-2.2"
 }
 
 # ───────── Dispatch ─────────

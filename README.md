@@ -104,9 +104,18 @@ Gemini מחזיר תיקונים ספציפיים — "סצנה 2 קצרה מד�
 - `gpt-image-1` — OpenAI GPT Image, ~$0.04 (דורש `OPENAI_API_KEY`)
 - `imagen-3.0` — Imagen 3 (fallback)
 
-**וידאו:**
-- `ltx-2` — fal.ai, ~$0.07 ל-5 שניות, מהיר
-- `grok-imagine` — xAI, ~$1.10 ל-5 שניות, פרימיום (דורש `XAI_API_KEY`)
+**וידאו (11 מודלים):**
+- `ltx-2` — fal.ai, ~$0.07 ל-5 שניות, הכי מהיר וזול
+- `wan-2.2` — fal.ai (Wan), ~$0.35, חזק לקוד-פתוח
+- `minimax-hailuo-02` — fal.ai (MiniMax), ~$0.30, תנועה ריאליסטית
+- `luma-ray-2` — fal.ai (Luma), ~$0.40, אסתטיקה אטמוספרית
+- `pika-2.5` — fal.ai (Pika Labs), ~$0.45, רב-תכליתי
+- `kling-v2.1` — fal.ai (Kling), ~$0.50, פרימיום קולנועי
+- `runway-gen-4` — fal.ai (Runway), ~$0.50, סטנדרט תעשייתי
+- `seedance-pro` — fal.ai (ByteDance), ~$0.60, מהיר + פרימיום
+- `veo-3` — fal.ai (Google Veo), ~$0.75, הפרימיום של גוגל
+- `sora-2` — **OpenAI**, ~$0.80 (דורש `OPENAI_API_KEY`)
+- `grok-imagine` — xAI, ~$1.10, פרימיום (דורש `XAI_API_KEY`)
 
 ### עלות
 
@@ -299,8 +308,8 @@ Then [`patch-plan.cjs`](scripts/patch-plan.cjs) applies each `plan_patch` (parse
 | `--critique-target-score` | 8.5 | Stop loop when score ≥ N |
 | `--critique-max-rounds` | 3 | Hard cap on iterations |
 | `--scene-source N:path` | — | Substitute scene N with an existing image/video file. Repeatable. |
-| `--img-model <m>` | by `--quality` tier | `flux-schnell` \| `flux-pro-1.1` \| `nano-banana-2` \| `nano-banana-pro` \| `gpt-image-1` \| `imagen-3.0` |
-| `--vid-model <m>` | by `--quality` tier | `ltx-2` \| `grok-imagine` |
+| `--img-model <m>` | by `--quality` tier | `flux-schnell` \| `flux-pro-1.1` \| `nano-banana-2` \| `nano-banana-pro` \| `gpt-image-1` \| `gpt-image-2` \| `imagen-3.0` |
+| `--vid-model <m>` | by `--quality` tier | `ltx-2` \| `grok-imagine` \| `kling-v2.1` \| `seedance-pro` \| `luma-ray-2` \| `runway-gen-4` \| `pika-2.5` \| `minimax-hailuo-02` \| `veo-3` \| `sora-2` \| `wan-2.2` |
 
 ### Available generators
 
@@ -311,8 +320,9 @@ Then [`patch-plan.cjs`](scripts/patch-plan.cjs) applies each `plan_patch` (parse
 | `flux-schnell` | fal.ai | ~$0.003 | Fastest, lowest cost |
 | `flux-pro-1.1` | fal.ai | ~$0.04 | Better quality |
 | `nano-banana-2` | Google (Gemini 2.5 Flash Image) | ~$0.039 | Good default |
-| `nano-banana-pro` | Google (Imagen 4 Ultra) | ~$0.08 | Premium quality, photoreal |
+| `nano-banana-pro` | Google (Imagen 4 Ultra) | ~$0.08 | Premium photoreal |
 | `gpt-image-1` | OpenAI | ~$0.04 | Requires `OPENAI_API_KEY` |
+| `gpt-image-2` | OpenAI | ~$0.06 | Newer GPT Image, requires `OPENAI_API_KEY` |
 | `imagen-3.0` | Google | ~$0.04 | Imagen 3 fallback |
 
 **Video models:**
@@ -320,6 +330,15 @@ Then [`patch-plan.cjs`](scripts/patch-plan.cjs) applies each `plan_patch` (parse
 | Model | Provider | Cost/5s | Notes |
 |-------|----------|---------|-------|
 | `ltx-2` | fal.ai | ~$0.07 | Fast, default for cheap/medium |
+| `wan-2.2` | fal.ai (Wan) | ~$0.35 | Strong, open-source heritage |
+| `minimax-hailuo-02` | fal.ai (MiniMax) | ~$0.30 | Realistic motion |
+| `luma-ray-2` | fal.ai (Luma) | ~$0.40 | Atmospheric / dreamlike |
+| `pika-2.5` | fal.ai (Pika Labs) | ~$0.45 | Versatile |
+| `kling-v2.1` | fal.ai (Kling) | ~$0.50 | Premium cinematic |
+| `runway-gen-4` | fal.ai (Runway) | ~$0.50 | Industry standard |
+| `seedance-pro` | fal.ai (ByteDance) | ~$0.60 | Fast + premium |
+| `veo-3` | fal.ai (Google Veo) | ~$0.75 | Google's premium |
+| `sora-2` | OpenAI | ~$0.80 | Requires `OPENAI_API_KEY` |
 | `grok-imagine` | xAI | ~$1.10 | Premium, requires `XAI_API_KEY` |
 
 ### Pick a model explicitly
