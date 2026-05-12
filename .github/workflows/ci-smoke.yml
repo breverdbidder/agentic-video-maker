@@ -1,0 +1,77 @@
+name: CI Smoke
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: System deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg jq python3 fonts-heebo
+          ffmpeg -version | head -1
+          jq --version
+
+      - name: Install node deps
+        run: cd scripts && npm install --no-audit --no-fund
+
+      - name: Bash syntax check
+        run: bash -n scripts/make-ai-video.sh
+
+      - name: Node syntax check
+        run: |
+          node --check scripts/gemini-critique.cjs
+          node --check scripts/patch-plan.cjs
+
+      - name: Help text renders (no API call)
+        run: bash scripts/make-ai-video.sh --help 2>&1 | head -30 || true
+
+      - name: patch-plan.cjs unit test (no API)
+        run: |
+          cat > /tmp/plan.json <<'EOF'
+          {
+            "title": "Test",
+            "scenes": [
+              {"i": 1, "duration_sec": 3, "text_on_screen": "hello", "status": "ready"},
+              {"i": 2, "duration_sec": 4, "text_on_screen": "world", "status": "ready"}
+            ]
+          }
+          EOF
+          cat > /tmp/critique.json <<'EOF'
+          {
+            "overall_score": 7,
+            "issues": [
+              {"scene_index": 1, "severity": "P1", "problem": "too short",
+               "plan_patch": {"field": "scenes[0].duration_sec", "new_value": "5"}},
+              {"scene_index": 0, "severity": "P2", "problem": "music loud",
+               "plan_patch": {"field": "audio_mix.music_volume", "new_value": "0.12"}},
+              {"scene_index": 0, "severity": "P2", "problem": "bogus field",
+               "plan_patch": {"field": "does.not.exist", "new_value": "x"}}
+            ]
+          }
+          EOF
+          node scripts/patch-plan.cjs /tmp/plan.json /tmp/critique.json /tmp/out.json
+          echo "--- patched plan ---"
+          cat /tmp/out.json
+          # Assertions
+          node -e "
+            const p = require('/tmp/out.json');
+            if (p.scenes[0].duration_sec !== 5) { console.error('FAIL: scene 0 duration not patched'); process.exit(1); }
+            if (p.scenes[0].status !== 'pending') { console.error('FAIL: scene 0 status not reset'); process.exit(1); }
+            if (p.audio_mix.music_volume !== 0.12) { console.error('FAIL: audio_mix.music_volume not auto-created'); process.exit(1); }
+            console.log('OK: patch-plan.cjs passes Everest smoke test');
+          "

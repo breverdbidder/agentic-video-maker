@@ -1,0 +1,148 @@
+# CLI-ANYTHING harness manifest — Everest video_maker agent
+# Per HARNESS.md (CLI-ANYTHING mandate, Mar 11 2026).
+# This file is the contract between summit_chat_dispatch and the GHA workflow.
+
+agent: cli_anything.video_maker
+version: 1.0.0
+upstream: Meir770ar/agentic-video-maker
+fork: breverdbidder/agentic-video-maker
+license: MIT
+license_tier: 4_PERMISSIVE_FREE
+
+dispatch:
+  channel: github_repository_dispatch
+  repo: breverdbidder/agentic-video-maker
+  event_type: everest_video_request
+  workflow: .github/workflows/everest-dispatch.yml
+
+input_schema:
+  brief:
+    type: string
+    required: true
+    description: "One-line video description (any language; Hebrew RTL supported)"
+  length:
+    type: int
+    default: 30
+    min: 10
+    max: 60
+    unit: seconds
+  quality:
+    type: enum
+    default: medium
+    values: [cheap, medium, premium, ultra]
+    notes:
+      premium: "requires XAI_API_KEY — HITL gate"
+      ultra: "$5–10/run — HITL per-run gate"
+  look:
+    type: enum
+    default: modern
+    values: [modern, warm, tech, luxury, minimal, medical, documentary, cinematic, classic, neon]
+  aspects:
+    type: string
+    default: "16:9"
+    values: ["16:9", "9:16", "1:1"]
+  max_cost:
+    type: number
+    default: 5
+    hard_cap: 10
+    unit: USD
+    rule: "Everest $10/task ceiling"
+  voice_id:
+    type: string
+    default: from_vault(elevenlabs_voice_id_default)
+  critique_loop:
+    type: bool
+    default: true
+  target_score:
+    type: number
+    default: 8.5
+    min: 6.0
+    max: 10.0
+  max_rounds:
+    type: int
+    default: 3
+    hard_cap: 5
+  plan_id:
+    type: string
+    optional: true
+    description: "Resume produce on existing plan (skip planning phase)"
+  run_id:
+    type: string
+    optional: true
+    description: "Supabase video_generation_runs.id for callback correlation"
+
+secrets:
+  required:
+    - vault_name: gemini_api_key
+      gha_secret: GEMINI_API_KEY
+      status: present
+    - vault_name: elevenlabs_api_key
+      gha_secret: ELEVENLABS_API_KEY
+      status: MISSING_HITL
+    - vault_name: fal_api_key
+      gha_secret: FAL_KEY
+      status: MISSING_HITL
+    - vault_name: elevenlabs_voice_id_default
+      gha_secret: VOICE_ID
+      status: MISSING_HITL
+  optional:
+    - vault_name: xai_api_key
+      gha_secret: XAI_API_KEY
+      required_for: ["quality=premium", "quality=ultra", "--vid-model=grok-imagine"]
+    - vault_name: openai_api_key
+      gha_secret: OPENAI_API_KEY
+      required_for: ["--img-model=gpt-image-1", "--img-model=gpt-image-2", "--vid-model=sora-2"]
+
+outputs:
+  artifact:
+    name_template: "video-{plan_id}"
+    contents:
+      - "ai-video-result-{plan_id}.mp4"
+      - "ai-video-*{plan_id}*.json"
+      - "plan.log"
+    retention_days: 14
+  callback:
+    table: video_generation_runs   # TODO: schema below
+    fields:
+      - run_id
+      - plan_id
+      - status
+      - cost_estimate
+      - critique_score
+      - rounds_used
+      - artifact_url
+    status: TODO_TABLE_NOT_YET_CREATED
+
+cost_envelope:
+  cheap: { min: 0.50, max: 1.00, base_models: ["flux-schnell", "ltx-2"] }
+  medium: { min: 1.50, max: 3.00, base_models: ["nano-banana-2", "ltx-2"] }
+  premium: { min: 3.00, max: 6.00, base_models: ["nano-banana-2", "grok-imagine"], hitl_keys: ["XAI_API_KEY"] }
+  ultra: { min: 5.00, max: 10.00, base_models: ["nano-banana-2 A/B", "grok-imagine"], hitl_keys: ["XAI_API_KEY"], hitl_per_run: true }
+  critique_loop_multiplier: "~1.0x per round (cached scenes don't regen)"
+
+honesty:
+  verified:
+    - "license=MIT (cat LICENSE | head)"
+    - "fork accessible at breverdbidder/agentic-video-maker (HTTP 202 confirmed)"
+    - "gemini_api_key present in Supabase vault (length 39)"
+    - "node 18 + @google/genai installs cleanly"
+    - "ffmpeg + jq + python3 available on ubuntu-latest GHA runners"
+    - "patch-plan.cjs unit test passes (see .github/workflows/ci-smoke.yml)"
+  untested:
+    - "End-to-end produce run (requires HITL: ElevenLabs + fal.ai accounts)"
+    - "Hebrew voice quality on eleven_v3 (subjective evaluation needed)"
+    - "Cost-estimate accuracy vs actual billed at premium/ultra tier"
+  assumed:
+    - "GHA ubuntu-latest runner has enough disk/RAM for 60s 1080p compose (~likely fine, not measured)"
+    - "AUTOLOOP V2 evolver currently lacks standardized JSON-path patcher (NOT verified)"
+
+sentinel_watches:
+  - upstream_staleness_days: 90    # auto-quarantine if upstream silent
+  - workflow_failure_pattern: "Missing secrets (NAME ONLY):"
+  - cost_overrun: "estimate exceeds --max-cost"
+
+related:
+  pattern_source_for:
+    - "AUTOLOOP V2 evolver (port patch-plan.cjs JSON-path patcher)"
+    - "signal_detector output contract (adopt plan_patch:{field,new_value})"
+    - "Verifier prompts (mine P0/P1/P2 severity taxonomy from gemini-critique.cjs SYSTEM_PROMPT)"

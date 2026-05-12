@@ -1,0 +1,244 @@
+name: Everest Video Dispatch
+
+# Dispatched by Supabase summit_chat_dispatch via pg_net.http_post → /repos/.../dispatches
+# event_type: everest_video_request
+# client_payload schema:
+#   brief         (string, required)
+#   length        (int, optional, default 30)
+#   quality       (string, optional, default "medium" — cheap|medium|premium|ultra)
+#   look          (string, optional, default "modern")
+#   aspects       (string, optional, default "16:9")
+#   max_cost      (number, optional, default 5; HARD CAP 10 per Everest $10/task rule)
+#   voice_id      (string, optional, falls back to vault default)
+#   critique_loop (bool, optional, default true)
+#   target_score  (number, optional, default 8.5)
+#   max_rounds    (int, optional, default 3; HARD CAP 5)
+#   plan_id       (string, optional — resume produce on existing plan)
+#   run_id        (string, optional — Supabase callback correlation id)
+
+on:
+  repository_dispatch:
+    types: [everest_video_request]
+  workflow_dispatch:
+    inputs:
+      brief:
+        description: "Video brief (one line)"
+        required: true
+        type: string
+      length:
+        description: "Target seconds"
+        required: false
+        default: "30"
+        type: string
+      quality:
+        description: "Quality tier"
+        required: false
+        default: "medium"
+        type: choice
+        options: [cheap, medium, premium, ultra]
+      max_cost:
+        description: "Hard cost ceiling in USD (Everest rule: ≤10)"
+        required: false
+        default: "5"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      brief: ${{ steps.normalize.outputs.brief }}
+      length: ${{ steps.normalize.outputs.length }}
+      quality: ${{ steps.normalize.outputs.quality }}
+      look: ${{ steps.normalize.outputs.look }}
+      aspects: ${{ steps.normalize.outputs.aspects }}
+      max_cost: ${{ steps.normalize.outputs.max_cost }}
+      critique_loop: ${{ steps.normalize.outputs.critique_loop }}
+      target_score: ${{ steps.normalize.outputs.target_score }}
+      max_rounds: ${{ steps.normalize.outputs.max_rounds }}
+      plan_id: ${{ steps.normalize.outputs.plan_id }}
+      run_id: ${{ steps.normalize.outputs.run_id }}
+    steps:
+      - name: Normalize inputs (dispatch + workflow_dispatch)
+        id: normalize
+        env:
+          # repository_dispatch payload (top-level access via client_payload)
+          RD_BRIEF: ${{ github.event.client_payload.brief }}
+          RD_LENGTH: ${{ github.event.client_payload.length }}
+          RD_QUALITY: ${{ github.event.client_payload.quality }}
+          RD_LOOK: ${{ github.event.client_payload.look }}
+          RD_ASPECTS: ${{ github.event.client_payload.aspects }}
+          RD_MAX_COST: ${{ github.event.client_payload.max_cost }}
+          RD_CRITIQUE_LOOP: ${{ github.event.client_payload.critique_loop }}
+          RD_TARGET_SCORE: ${{ github.event.client_payload.target_score }}
+          RD_MAX_ROUNDS: ${{ github.event.client_payload.max_rounds }}
+          RD_PLAN_ID: ${{ github.event.client_payload.plan_id }}
+          RD_RUN_ID: ${{ github.event.client_payload.run_id }}
+          # workflow_dispatch inputs
+          WD_BRIEF: ${{ github.event.inputs.brief }}
+          WD_LENGTH: ${{ github.event.inputs.length }}
+          WD_QUALITY: ${{ github.event.inputs.quality }}
+          WD_MAX_COST: ${{ github.event.inputs.max_cost }}
+        run: |
+          set -euo pipefail
+          BRIEF="${RD_BRIEF:-${WD_BRIEF:-}}"
+          LENGTH="${RD_LENGTH:-${WD_LENGTH:-30}}"
+          QUALITY="${RD_QUALITY:-${WD_QUALITY:-medium}}"
+          LOOK="${RD_LOOK:-modern}"
+          ASPECTS="${RD_ASPECTS:-16:9}"
+          MAX_COST="${RD_MAX_COST:-${WD_MAX_COST:-5}}"
+          CRITIQUE_LOOP="${RD_CRITIQUE_LOOP:-true}"
+          TARGET_SCORE="${RD_TARGET_SCORE:-8.5}"
+          MAX_ROUNDS="${RD_MAX_ROUNDS:-3}"
+          PLAN_ID="${RD_PLAN_ID:-}"
+          RUN_ID="${RD_RUN_ID:-}"
+
+          # Everest $10/task ceiling
+          if (( $(echo "$MAX_COST > 10" | bc -l) )); then
+            echo "::error::max_cost=$MAX_COST exceeds Everest \$10/task ceiling — HITL required"
+            exit 1
+          fi
+          # Everest max_rounds hard cap (5)
+          if (( MAX_ROUNDS > 5 )); then
+            echo "::error::max_rounds=$MAX_ROUNDS exceeds hard cap of 5"
+            exit 1
+          fi
+          if [[ -z "$BRIEF" ]]; then
+            echo "::error::brief is required"
+            exit 1
+          fi
+          # Quality tiers that require additional HITL-gated keys
+          case "$QUALITY" in
+            premium|ultra)
+              echo "::warning::quality=$QUALITY requires XAI_API_KEY (HITL gate per CLAUDE.md)"
+              ;;
+          esac
+
+          {
+            echo "brief<<EOF"; echo "$BRIEF"; echo "EOF"
+            echo "length=$LENGTH"
+            echo "quality=$QUALITY"
+            echo "look=$LOOK"
+            echo "aspects=$ASPECTS"
+            echo "max_cost=$MAX_COST"
+            echo "critique_loop=$CRITIQUE_LOOP"
+            echo "target_score=$TARGET_SCORE"
+            echo "max_rounds=$MAX_ROUNDS"
+            echo "plan_id=$PLAN_ID"
+            echo "run_id=$RUN_ID"
+          } >> "$GITHUB_OUTPUT"
+
+  produce:
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      # Secrets MUST exist in repo settings; populated from Supabase vault (one-time bootstrap)
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      FAL_KEY: ${{ secrets.FAL_KEY }}
+      VOICE_ID: ${{ secrets.VOICE_ID }}
+      XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pre-flight secrets check (NAME ONLY — never echo values)
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "${GEMINI_API_KEY:-}" ]] && missing+=("GEMINI_API_KEY")
+          [[ -z "${ELEVENLABS_API_KEY:-}" ]] && missing+=("ELEVENLABS_API_KEY")
+          [[ -z "${FAL_KEY:-}" ]] && missing+=("FAL_KEY")
+          [[ -z "${VOICE_ID:-}" ]] && missing+=("VOICE_ID")
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing secrets (NAME ONLY): ${missing[*]}"
+            echo "::error::Populate via: gh secret set <NAME> -R breverdbidder/agentic-video-maker"
+            echo "::error::Source values from Supabase vault per CLAUDE.md HITL gates table"
+            exit 1
+          fi
+          echo "All required secrets present."
+
+      - name: System deps (ffmpeg + jq + fonts-heebo)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg jq python3 fonts-heebo bc
+          fc-cache -fv >/dev/null
+
+      - name: Node 18 + hyperframes + script deps
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install hyperframes + script deps
+        run: |
+          npm install -g hyperframes
+          cd scripts && npm install --no-audit --no-fund --silent
+
+      - name: Plan
+        id: plan
+        if: needs.guard.outputs.plan_id == ''
+        run: |
+          set -euo pipefail
+          out=$(bash scripts/make-ai-video.sh \
+            --mode plan \
+            --brief "${{ needs.guard.outputs.brief }}" \
+            --length "${{ needs.guard.outputs.length }}" \
+            --quality "${{ needs.guard.outputs.quality }}" \
+            --look "${{ needs.guard.outputs.look }}" \
+            --aspects "${{ needs.guard.outputs.aspects }}" \
+            --max-cost "${{ needs.guard.outputs.max_cost }}" 2>&1 | tee plan.log)
+          PLAN_ID=$(grep -oE 'PLAN_ID: [a-zA-Z0-9_-]+' plan.log | awk '{print $2}' | head -1)
+          if [[ -z "$PLAN_ID" ]]; then
+            echo "::error::plan did not return PLAN_ID"
+            exit 1
+          fi
+          echo "plan_id=$PLAN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve plan_id (resume or fresh)
+        id: pid
+        run: |
+          PID="${{ needs.guard.outputs.plan_id }}"
+          if [[ -z "$PID" ]]; then PID="${{ steps.plan.outputs.plan_id }}"; fi
+          echo "plan_id=$PID" >> "$GITHUB_OUTPUT"
+
+      - name: Produce (with critique-loop)
+        run: |
+          set -euo pipefail
+          LOOP_FLAG="--critique-loop on"
+          if [[ "${{ needs.guard.outputs.critique_loop }}" != "true" ]]; then LOOP_FLAG="--critique-loop off"; fi
+          bash scripts/make-ai-video.sh \
+            --mode produce \
+            --plan-id "${{ steps.pid.outputs.plan_id }}" \
+            $LOOP_FLAG \
+            --critique-target-score "${{ needs.guard.outputs.target_score }}" \
+            --critique-max-rounds "${{ needs.guard.outputs.max_rounds }}"
+
+      - name: Collect artifacts
+        if: always()
+        run: |
+          set +e
+          mkdir -p out
+          PID="${{ steps.pid.outputs.plan_id }}"
+          cp -v "/tmp/ai-video-result-${PID}.mp4" out/ 2>/dev/null || true
+          cp -v /tmp/ai-video-*"${PID}"*.json out/ 2>/dev/null || true
+          cp -v plan.log out/ 2>/dev/null || true
+          ls -la out/
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-${{ steps.pid.outputs.plan_id }}
+          path: out/
+          retention-days: 14
+
+      - name: Callback (Supabase) — TODO when video_generation_runs table exists
+        if: always() && needs.guard.outputs.run_id != ''
+        run: |
+          echo "TODO: POST run completion to Supabase video_generation_runs"
+          echo "run_id=${{ needs.guard.outputs.run_id }}"
+          echo "plan_id=${{ steps.pid.outputs.plan_id }}"
+          echo "status=${{ job.status }}"
