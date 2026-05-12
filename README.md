@@ -1,10 +1,107 @@
-# agentic-video-maker
+# 🎬 agentic-video-maker
 
-> AI video pipeline with a self-correcting critique loop. From a one-line brief to a polished, captioned, narrated video — and an AI editor that iteratively improves it.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Hebrew](https://img.shields.io/badge/RTL-עברית-blue)](#-עברית-hebrew)
+[![Powered by](https://img.shields.io/badge/powered%20by-Gemini%20%2B%20ElevenLabs%20%2B%20fal.ai-success)](#credits)
 
-`agentic-video-maker` orchestrates Gemini, ElevenLabs, fal.ai, HyperFrames and ffmpeg into one bash pipeline. After rendering, **Gemini Video** watches the output, returns structured editor notes, and the script auto-applies the patches and re-renders — up to N rounds, or until a target quality score is reached.
+> **AI video pipeline with a self-correcting critique loop.** From a one-line brief to a polished, captioned, narrated video — and an AI editor that iteratively improves it.
 
-This repo is a thin glue layer. All credit to the underlying APIs.
+---
+
+## 📥 Install
+
+One-liner — clones the repo and installs node deps:
+
+```bash
+git clone https://github.com/Meir770ar/agentic-video-maker.git && cd agentic-video-maker/scripts && npm install
+```
+
+System dependencies (Debian/Ubuntu):
+
+```bash
+sudo apt install -y ffmpeg jq python3 fonts-heebo && npm install -g hyperframes
+```
+
+System dependencies (macOS):
+
+```bash
+brew install ffmpeg jq python3 && npm install -g hyperframes
+```
+
+Then copy `.env.example` to `.env`, fill in your API keys, and `source .env`.
+
+---
+
+## 🇮🇱 עברית (Hebrew)
+
+### מה זה?
+
+**agentic-video-maker** הוא pipeline שיוצר סרטון מקצועי מ-brief של שורה אחת — עם **לולאת ביקורת עצמית** שמשפרת את התוצר אוטומטית עד שהוא ברמת שיגור.
+
+הצינור מחבר:
+- **Gemini** — כותב את התסריט, יוצר prompts לוויזואלים, ומנתח את הסרטון הסופי כעורך וידאו בכיר
+- **ElevenLabs** — קריינות איכותית (`eleven_v3`) + יצירת מוזיקה ב-Music API
+- **fal.ai / xAI** — יצירת תמונות (FLUX, nano-banana 2) ווידאו (LTX-2, Grok Imagine)
+- **HyperFrames + ffmpeg** — הרכבה, מעברים, כתוביות, גרפיקה אנימטיבית
+
+תמיכה מלאה בעברית RTL (כתוביות, קריינות, פונטים).
+
+### מה החידוש?
+
+רוב כלי ה-AI video מסתיימים ב"יצרת ויזואל + voiceover". כאן נסגר הלולאה:
+
+```
+brief → תסריט → ויזואלים + קריינות + מוזיקה → הרכבה
+                                                  ↓
+                                  ניתוח Gemini Video (כמו עורך בכיר)
+                                                  ↓
+                                       הערות מובנות (JSON עם timestamps)
+                                                  ↓
+                                  patch אוטומטי ל-plan
+                                                  ↓
+                              render מחדש לסצנות שהושפעו
+                                                  ↓
+                                  (חוזר עד שהציון יעד הושג)
+```
+
+Gemini מחזיר תיקונים ספציפיים — "סצנה 2 קצרה מדי", "הטקסט קטן", "המוזיקה רועשת מדי בקריינות" — והסקריפט מחיל אותם ומפיק שוב, עד שהציון >= 8.5/10 או עד מקסימום 3 סבבים.
+
+### התחלה מהירה (5 דקות)
+
+1. **התקנה** — העתק את הפקודה למעלה
+2. **מפתחות API** — `cp .env.example .env`, מלא את:
+   - `GEMINI_API_KEY` ([ai.google.dev](https://aistudio.google.com))
+   - `ELEVENLABS_API_KEY` ([elevenlabs.io](https://elevenlabs.io))
+   - `FAL_KEY` ([fal.ai](https://fal.ai))
+   - `VOICE_ID` (קול ציבורי מ-[Voice Library](https://elevenlabs.io/app/voice-library))
+3. **תכנון** — `bash scripts/make-ai-video.sh --mode plan --brief "סרטון על בית קפה" --length 30 --quality medium --look warm --max-cost 5`
+4. **הפקה עם auto-fix** — `bash scripts/make-ai-video.sh --mode produce --plan-id <ID> --critique-loop on`
+
+### דגלים עיקריים
+
+| דגל | מטרה |
+|------|------|
+| `--brief "<טקסט>"` | תיאור הסרטון בכל שפה |
+| `--length N` | משך ביעד בשניות (10-60) |
+| `--quality cheap\|medium\|premium\|ultra` | טיר איכות (משפיע על העלות) |
+| `--look modern\|warm\|tech\|...` | סגנון ויזואלי |
+| `--voice <id>` | קול ElevenLabs (חובה — אין default) |
+| `--music-source musiclib\|elevenlabs\|auto` | מקור מוזיקה |
+| `--critique on\|off` | ניתוח Gemini אחרי הפקה |
+| `--critique-loop on` | לולאת תיקון עצמי |
+| `--critique-target-score 8.5` | ציון יעד להפסיק |
+| `--scene-source N:/path/file` | החלף סצנה N בקובץ שלך |
+
+### עלות
+
+| איכות | תמונות | וידאו | סה"כ ל-60s |
+|-------|--------|-------|-------------|
+| cheap | FLUX schnell | LTX-2 | ~$0.50–1 |
+| medium | nano-banana 2 | LTX-2 | ~$1.50–3 |
+| premium | nano-banana 2 | Grok Imagine | ~$3–6 |
+| ultra | A/B test images | Grok Imagine | ~$5–10 |
+
+עם `--critique-loop on` × N סבבים: כפול כמות הסבבים בערך (סצנות מוכנות לא נוצרות מחדש).
 
 ---
 
