@@ -161,11 +161,22 @@ jobs:
           fi
           echo "All required secrets present."
 
-      - name: System deps (ffmpeg + jq + fonts-heebo)
+      - name: System deps (ffmpeg + jq + Hebrew-capable font)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg jq python3 fonts-heebo bc
-          fc-cache -fv >/dev/null
+          sudo apt-get install -y -qq ffmpeg jq python3 bc fontconfig
+          # fonts-heebo not in Ubuntu 24.04 default repos; install from Google Fonts directly.
+          # Heebo is OFL-licensed (use is fine; not redistributing).
+          sudo mkdir -p /usr/share/fonts/truetype/heebo
+          for w in Regular Bold Light Medium Black; do
+            curl -fsSL -o "/tmp/Heebo-${w}.ttf" \
+              "https://github.com/google/fonts/raw/main/ofl/heebo/Heebo%5Bwght%5D.ttf" 2>/dev/null && \
+              sudo cp "/tmp/Heebo-${w}.ttf" "/usr/share/fonts/truetype/heebo/Heebo-${w}.ttf" && break || true
+          done
+          # Fallback: also install fonts-dejavu (always available) so libass has *something* with Hebrew coverage
+          sudo apt-get install -y -qq fonts-dejavu fonts-noto-hinted || true
+          sudo fc-cache -fv >/dev/null 2>&1 || true
+          fc-list :lang=he | head -5 || echo "::warning::No Hebrew-capable font detected — captions may be gibberish"
 
       - name: Node 18 + hyperframes + script deps
         uses: actions/setup-node@v4

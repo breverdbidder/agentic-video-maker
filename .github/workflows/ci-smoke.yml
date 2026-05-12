@@ -19,10 +19,10 @@ jobs:
         with:
           node-version: '18'
 
-      - name: System deps
+      - name: System deps (smoke = no video render, no fonts needed)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg jq python3 fonts-heebo
+          sudo apt-get install -y -qq ffmpeg jq python3
           ffmpeg -version | head -1
           jq --version
 
