@@ -91,6 +91,22 @@ Gemini מחזיר תיקונים ספציפיים — "סצנה 2 קצרה מד�
 | `--critique-loop on` | לולאת תיקון עצמי |
 | `--critique-target-score 8.5` | ציון יעד להפסיק |
 | `--scene-source N:/path/file` | החלף סצנה N בקובץ שלך |
+| `--img-model <m>` | בחירת מודל תמונה (ראה טבלה למטה) |
+| `--vid-model <m>` | בחירת מודל וידאו (`ltx-2` / `grok-imagine`) |
+
+### מודלים זמינים
+
+**תמונות:**
+- `flux-schnell` — fal.ai, ~$0.003, הכי מהיר וזול
+- `flux-pro-1.1` — fal.ai, ~$0.04, איכות גבוהה
+- `nano-banana-2` — Gemini 2.5 Flash Image, ~$0.039, ברירת מחדל טובה
+- `nano-banana-pro` — **Imagen 4 Ultra**, ~$0.08, איכות פוטוריאליסטית פרימיום
+- `gpt-image-1` — OpenAI GPT Image, ~$0.04 (דורש `OPENAI_API_KEY`)
+- `imagen-3.0` — Imagen 3 (fallback)
+
+**וידאו:**
+- `ltx-2` — fal.ai, ~$0.07 ל-5 שניות, מהיר
+- `grok-imagine` — xAI, ~$1.10 ל-5 שניות, פרימיום (דורש `XAI_API_KEY`)
 
 ### עלות
 
@@ -283,6 +299,37 @@ Then [`patch-plan.cjs`](scripts/patch-plan.cjs) applies each `plan_patch` (parse
 | `--critique-target-score` | 8.5 | Stop loop when score ≥ N |
 | `--critique-max-rounds` | 3 | Hard cap on iterations |
 | `--scene-source N:path` | — | Substitute scene N with an existing image/video file. Repeatable. |
+| `--img-model <m>` | by `--quality` tier | `flux-schnell` \| `flux-pro-1.1` \| `nano-banana-2` \| `nano-banana-pro` \| `gpt-image-1` \| `imagen-3.0` |
+| `--vid-model <m>` | by `--quality` tier | `ltx-2` \| `grok-imagine` |
+
+### Available generators
+
+**Image models:**
+
+| Model | Provider | Cost/image | Notes |
+|-------|----------|------------|-------|
+| `flux-schnell` | fal.ai | ~$0.003 | Fastest, lowest cost |
+| `flux-pro-1.1` | fal.ai | ~$0.04 | Better quality |
+| `nano-banana-2` | Google (Gemini 2.5 Flash Image) | ~$0.039 | Good default |
+| `nano-banana-pro` | Google (Imagen 4 Ultra) | ~$0.08 | Premium quality, photoreal |
+| `gpt-image-1` | OpenAI | ~$0.04 | Requires `OPENAI_API_KEY` |
+| `imagen-3.0` | Google | ~$0.04 | Imagen 3 fallback |
+
+**Video models:**
+
+| Model | Provider | Cost/5s | Notes |
+|-------|----------|---------|-------|
+| `ltx-2` | fal.ai | ~$0.07 | Fast, default for cheap/medium |
+| `grok-imagine` | xAI | ~$1.10 | Premium, requires `XAI_API_KEY` |
+
+### Pick a model explicitly
+
+```bash
+# Use Imagen 4 Ultra for images + Grok for video, regardless of quality tier
+bash scripts/make-ai-video.sh --mode produce --plan-id <ID> \
+  --img-model nano-banana-pro \
+  --vid-model grok-imagine
+```
 
 ### Use your own footage
 

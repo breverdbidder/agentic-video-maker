@@ -36,6 +36,8 @@
 #   --critique-target-score N  stop loop when score >= N (default: 8.5)
 #   --critique-max-rounds N    max iteration rounds (default: 3)
 #   --scene-source N:path swap scene N's AI gen with an existing image/video file. Repeatable.
+#   --img-model <m>       image generator override (flux-schnell|flux-pro-1.1|nano-banana-2)
+#   --vid-model <m>       video generator override (ltx-2|grok-imagine)
 #   --brand <name>        brand label shown on outro card
 #   --end-logo <path>     PNG path for end-card logo overlay
 #   --captions on|off     burn word-sync captions (default: on)
@@ -55,6 +57,7 @@ PROGRESS_TARGET=""; ALLOWED_RELIGION="none"; STYLE=""; CAPTIONS="on"
 USER_VOICE=""; MUSIC_SOURCE=""; MUSIC_PROMPT=""; CRITIQUE="off"
 CRITIQUE_LOOP="off"; CRITIQUE_TARGET_SCORE="8.5"; CRITIQUE_MAX_ROUNDS=3
 SCENE_SOURCES=()  # array of "N:/path/to/file" entries; processed before asset gen
+USER_IMG_MODEL=""; USER_VID_MODEL=""  # explicit model overrides (otherwise picked by --quality tier)
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -85,6 +88,8 @@ while [ $# -gt 0 ]; do
     --critique-target-score) CRITIQUE_TARGET_SCORE="$2"; shift 2 ;;
     --critique-max-rounds) CRITIQUE_MAX_ROUNDS="$2"; shift 2 ;;
     --scene-source) SCENE_SOURCES+=("$2"); shift 2 ;;
+    --img-model) USER_IMG_MODEL="$2"; shift 2 ;;
+    --vid-model) USER_VID_MODEL="$2"; shift 2 ;;
     # F11 fix: warn on unknown flags (catch typos like --vocie). Don't error to keep loose-compat.
     --*) echo "WARN: unknown flag '$1' — ignoring (typo?)" >&2; shift; [ $# -gt 0 ] && [[ "$1" != --* ]] && shift ;;
     *) shift ;;
@@ -116,6 +121,18 @@ case "$MUSIC_SOURCE" in
 esac
 case "$CRITIQUE" in on|off) ;; *) echo "ERROR: --critique must be on|off, got '$CRITIQUE'" >&2; exit 1 ;; esac
 case "$CRITIQUE_LOOP" in on|off) ;; *) echo "ERROR: --critique-loop must be on|off, got '$CRITIQUE_LOOP'" >&2; exit 1 ;; esac
+if [ -n "$USER_IMG_MODEL" ]; then
+  case "$USER_IMG_MODEL" in
+    flux-schnell|flux-pro-1.1|nano-banana-2|nano-banana-pro|gpt-image-1|imagen-3.0) ;;
+    *) echo "ERROR: --img-model must be one of: flux-schnell|flux-pro-1.1|nano-banana-2|nano-banana-pro|gpt-image-1|imagen-3.0 — got '$USER_IMG_MODEL'" >&2; exit 1 ;;
+  esac
+fi
+if [ -n "$USER_VID_MODEL" ]; then
+  case "$USER_VID_MODEL" in
+    ltx-2|grok-imagine) ;;
+    *) echo "ERROR: --vid-model must be one of: ltx-2|grok-imagine — got '$USER_VID_MODEL'" >&2; exit 1 ;;
+  esac
+fi
 
 # ───────── Defaults from quality ─────────
 case "$QUALITY" in
@@ -125,6 +142,10 @@ case "$QUALITY" in
   ultra)   IMG_MODEL="nano-banana-2";  VID_MODEL="grok-imagine"; TWO_STAGE=${TWO_STAGE:-on};  AB_HERO=${AB_HERO:-on}  ;;
   *) echo "ERROR: --quality must be cheap|medium|premium|ultra" >&2; exit 1 ;;
 esac
+
+# Explicit --img-model / --vid-model overrides the quality-tier defaults
+[ -n "$USER_IMG_MODEL" ] && IMG_MODEL="$USER_IMG_MODEL"
+[ -n "$USER_VID_MODEL" ] && VID_MODEL="$USER_VID_MODEL"
 
 # Default look from style if not set
 [ -z "$LOOK" ] && LOOK="$STYLE"
@@ -340,12 +361,14 @@ pe_by_i = {s["i"]: s for s in pe["scenes"]}
 
 # Cost lookup
 COST = {
-  "grok-imagine":  lambda dur: 1.10 * (dur/5.0),
-  "ltx-2":         lambda dur: 0.07 * (dur/5.0),
-  "nano-banana-2": lambda _: 0.039,
-  "imagen-3.0":    lambda _: 0.04,
-  "flux-pro-1.1":  lambda _: 0.04,
-  "flux-schnell":  lambda _: 0.003,
+  "grok-imagine":     lambda dur: 1.10 * (dur/5.0),
+  "ltx-2":            lambda dur: 0.07 * (dur/5.0),
+  "nano-banana-2":    lambda _: 0.039,
+  "nano-banana-pro":  lambda _: 0.080,  # Imagen 4 Ultra ~$0.08
+  "gpt-image-1":      lambda _: 0.040,  # OpenAI standard size; HD higher
+  "imagen-3.0":       lambda _: 0.040,
+  "flux-pro-1.1":     lambda _: 0.040,
+  "flux-schnell":     lambda _: 0.003,
 }
 
 scenes_out = []
@@ -486,6 +509,8 @@ do_revise() {
     medium)  IMG_MODEL="nano-banana-2";  VID_MODEL="ltx-2" ;;
     premium|ultra) IMG_MODEL="nano-banana-2";  VID_MODEL="grok-imagine" ;;
   esac
+  [ -n "$USER_IMG_MODEL" ] && IMG_MODEL="$USER_IMG_MODEL"
+  [ -n "$USER_VID_MODEL" ] && VID_MODEL="$USER_VID_MODEL"
 
   # Augment brief with feedback for re-planning
   BRIEF="${BRIEF}
@@ -1519,6 +1544,8 @@ generate_scene_asset() {
   case "$MODEL" in
     grok-imagine) call_grok_imagine_video "$PROMPT" "$DUR" "$ASPECT" "$OUT" ;;
     nano-banana-2) call_nano_banana "$PROMPT" "$ASPECT" "$OUT" ;;
+    nano-banana-pro) call_nano_banana_pro "$PROMPT" "$ASPECT" "$OUT" ;;
+    gpt-image-1)  call_gpt_image "$PROMPT" "$ASPECT" "$OUT" ;;
     imagen-3.0)   call_imagen3 "$PROMPT" "$ASPECT" "$OUT" ;;
     flux-schnell|flux-pro-1.1) call_flux "$MODEL" "$PROMPT" "$ASPECT" "$OUT" ;;
     ltx-2)        call_ltx2 "$PROMPT" "$DUR" "$ASPECT" "$OUT" ;;
@@ -1581,6 +1608,62 @@ call_nano_banana() {
 
 call_imagen3() {
   call_nano_banana "$@"
+}
+
+# nano-banana-pro — premium tier Gemini/Imagen image model.
+# Chain: imagen-4-ultra → imagen-4 → imagen-3 → fallback to flash-image.
+call_nano_banana_pro() {
+  local PROMPT="$1" ASPECT="$2" OUT="$3"
+  local TMP; TMP=$(mktemp)
+  jq -n --arg p "$PROMPT" '{instances:[{prompt:$p}], parameters:{sampleCount:1}}' > "$TMP"
+  for MODEL in imagen-4-ultra-generate-001 imagen-4-generate-001 imagen-3.0-generate-002; do
+    local RESP; RESP=$(curl -sS -X POST "https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:predict?key=${GEMINI_API_KEY}" \
+      -H "Content-Type: application/json" --data-binary "@$TMP")
+    local B64; B64=$(echo "$RESP" | jq -r '.predictions[0].bytesBase64Encoded // empty' 2>/dev/null)
+    if [ -n "$B64" ] && [ "$B64" != "null" ]; then
+      echo "$B64" | base64 -d > "$OUT"
+      [ -s "$OUT" ] && { rm -f "$TMP"; echo "  used $MODEL" >&2; return 0; }
+    fi
+  done
+  rm -f "$TMP"
+  # Fallback to nano-banana (flash-image)
+  call_nano_banana "$PROMPT" "$ASPECT" "$OUT"
+}
+
+# gpt-image-1 — OpenAI's GPT Image model (formerly DALL-E 3's successor).
+# Requires OPENAI_API_KEY env var.
+call_gpt_image() {
+  local PROMPT="$1" ASPECT="$2" OUT="$3"
+  if [ -z "$OPENAI_API_KEY" ]; then
+    echo "  ERROR: gpt-image-1 requires OPENAI_API_KEY env var" >&2
+    return 1
+  fi
+  local SIZE="1024x1024"
+  case "$ASPECT" in
+    "16:9") SIZE="1536x1024" ;;
+    "9:16") SIZE="1024x1536" ;;
+    "1:1")  SIZE="1024x1024" ;;
+  esac
+  local TMP; TMP=$(mktemp)
+  jq -n --arg p "$PROMPT" --arg s "$SIZE" \
+    '{model:"gpt-image-1", prompt:$p, size:$s, n:1, output_format:"png"}' > "$TMP"
+  local RESP; RESP=$(curl -sS -X POST "https://api.openai.com/v1/images/generations" \
+    -H "Authorization: Bearer ${OPENAI_API_KEY}" -H "Content-Type: application/json" \
+    --data-binary "@$TMP")
+  rm -f "$TMP"
+  local B64; B64=$(echo "$RESP" | jq -r '.data[0].b64_json // empty')
+  if [ -n "$B64" ] && [ "$B64" != "null" ]; then
+    echo "$B64" | base64 -d > "$OUT"
+    [ -s "$OUT" ] && return 0
+  fi
+  # Some configs return URL instead of b64
+  local URL; URL=$(echo "$RESP" | jq -r '.data[0].url // empty')
+  if [ -n "$URL" ] && [ "$URL" != "null" ]; then
+    curl -sSL "$URL" -o "$OUT"
+    [ -s "$OUT" ] && return 0
+  fi
+  echo "  gpt-image-1 failed: $RESP" | head -c 400 >&2
+  return 1
 }
 
 call_flux() {
