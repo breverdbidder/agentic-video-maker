@@ -1,0 +1,9 @@
+.env
+.env.local
+node_modules/
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+/scripts/node_modules/
+/scripts/package-lock.json
